@@ -42,7 +42,7 @@ jobs:
         with:
           fetch-depth: 0
       - name: Run Dusty via composite action
-        uses: githubnext/dusty/.github/actions/run-dusty@main
+        uses: uses: ./.github/workflows/dusty.yml
         with:
           node-version: '22'
           rules-path: ${{ inputs.rules-path }}
