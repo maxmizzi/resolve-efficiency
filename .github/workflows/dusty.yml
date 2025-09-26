@@ -1,23 +1,63 @@
-# File: .github/workflows/dusty.yml
-name: Dusty
-on:
-  pull_request:
-    types: [opened, synchronize, reopened, ready_for_review]
-  push:
-    branches: [main]
-  schedule:
-    - cron: '0 12 * * 1'  # optional
-  workflow_dispatch:
+name: Dusty Rules (Reusable)
 
-permissions:
-  contents: read
-  pull-requests: write
+on:
+  workflow_call:
+    inputs:
+      runs-on:
+        description: "Runner label"
+        required: false
+        default: ubuntu-latest
+        type: string
+      events:
+        description: "Trigger events (comma-separated). e.g. pull_request, push"
+        required: false
+        default: pull_request
+        type: string
+      rules-path:
+        description: "Path to rules directory"
+        required: false
+        default: .github/dusty
+        type: string
+      install-copilot-cli:
+        description: "Install GitHub Copilot CLI before running Dusty"
+        required: false
+        default: false
+        type: boolean
+    secrets:
+      COPILOT_CLI_TOKEN:
+        description: "Token used by the Copilot CLI (exported as GITHUB_TOKEN for copilot)"
+        required: false
+      PACKAGES_TOKEN:
+        description: "Token with read:packages for installing @github/copilot from GitHub Packages"
+        required: false
 
 jobs:
   dusty:
-    uses: githubnext/dusty/.github/workflows/dusty.yml@main
-    with:
-      # optional; default is .github/dusty
-      rules-path: .github/dusty
-      # for monorepos, point to a subdirectory containing rules
-      # rules-path: packages/app/.github/dusty
+    runs-on: ${{ inputs.runs-on }}
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Run Dusty via composite action
+        uses: githubnext/dusty/.github/actions/run-dusty@main
+        with:
+          node-version: '22'
+          rules-path: ${{ inputs.rules-path }}
+          install-copilot-cli: ${{ inputs.install-copilot-cli }}
+          packages-token: ${{ secrets.PACKAGES_TOKEN }}
+          copilot-cli-token: ${{ secrets.COPILOT_CLI_TOKEN }}
+        env:
+          # Use the native Actions token for GitHub API
+          GITHUB_TOKEN: ${{ github.token }}
+          # Also expose as GH_TOKEN for gh CLI
+          GH_TOKEN: ${{ github.token }}
+          # Provide explicit repo context for gh CLI
+          GH_REPO: ${{ github.repository }}
+          GH_HOST: github.com
+          # Pass through Copilot token separately for the copilot subprocess
+          COPILOT_CLI_TOKEN: ${{ secrets.COPILOT_CLI_TOKEN }}
+          DUSTY_TARGET_DIR: ${{ github.workspace }}
+          DUSTY_MODE: reviewer
