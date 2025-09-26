@@ -1,0 +1,77 @@
+name: Run Dusty Toolkit
+description: Set up Node + pnpm and run Dusty in reviewer mode
+inputs:
+  node-version:
+    description: Node.js version
+    required: false
+    default: '22'
+  rules-path:
+    description: Path to rules directory
+    required: false
+    default: .github/dusty
+  install-copilot-cli:
+    description: Install GitHub Copilot CLI before running
+    required: false
+    default: 'false'
+  packages-token:
+    description: Token with read:packages for installing @github/copilot
+    required: false
+    default: ''
+  copilot-cli-token:
+    description: Token for Copilot CLI (export as GITHUB_TOKEN when running Dusty)
+    required: false
+    default: ''
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-node@v4
+      with:
+        node-version: ${{ inputs.node-version }}
+    - uses: pnpm/action-setup@v4
+      with:
+        version: 9
+        run_install: false
+    - name: Copilot CLI info (version and help)
+      shell: bash
+      run: |
+        set -e
+        if command -v copilot >/dev/null 2>&1; then
+          echo "copilot version:" && copilot --version || true
+          echo "copilot help (first 120 lines):" && copilot --help | head -n 120 || true
+        else
+          echo "copilot CLI not found on PATH"
+        fi
+    - name: Setup NPM Registry for GitHub Packages (optional)
+      if: ${{ inputs.install-copilot-cli == 'true' }}
+      shell: bash
+      run: |
+        if [ -n "${{ inputs.packages-token }}" ]; then
+          printf "//npm.pkg.github.com/:_authToken=%s\n@github:registry=https://npm.pkg.github.com/\n" "${{ inputs.packages-token }}" > ~/.npmrc
+        else
+          echo "packages-token not provided; assuming @github/copilot is accessible without auth"
+        fi
+    - name: Install GitHub Copilot CLI (optional)
+      if: ${{ inputs.install-copilot-cli == 'true' }}
+      shell: bash
+      run: npm install -g @github/copilot
+    - name: Install Dusty toolkit deps
+      shell: bash
+      run: pnpm install --frozen-lockfile=false
+      working-directory: ${{ github.action_path }}/../../../
+    - name: Run Dusty (Actions runner)
+      shell: bash
+      env:
+        # Keep the native Actions GITHUB_TOKEN for GitHub API/gh
+        GITHUB_TOKEN: ${{ env.GITHUB_TOKEN }}
+        # Explicitly provide GH_TOKEN for gh CLI auth
+        GH_TOKEN: ${{ env.GITHUB_TOKEN }}
+        # Provide GH_REPO for explicit repo context
+        GH_REPO: ${{ env.GITHUB_REPOSITORY }}
+        GH_HOST: github.com
+        # Provide a dedicated token for Copilot CLI subprocesses
+        COPILOT_CLI_TOKEN: ${{ inputs.copilot-cli-token }}
+        DUSTY_TARGET_DIR: ${{ env.DUSTY_TARGET_DIR }}
+        DUSTY_RULES_PATH: ${{ inputs.rules-path }}
+        DUSTY_MODE: ${{ env.DUSTY_MODE }}
+      run: pnpm run actions:run
+      working-directory: ${{ github.action_path }}/../../../
